@@ -10,7 +10,15 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='icon.png') }}">
 </head>
-<body>
+<body data-theme="dark">
+    <!-- DB Error Overlay -->
+    {% if db_error %}
+    <div style="background: #ef4444; color: white; padding: 0.75rem; text-align: center; font-size: 0.875rem; position: sticky; top: 0; z-index: 1000; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+        <strong>⚠️ Database Connection Error:</strong> {{ db_error }}
+        <p style="margin: 0.25rem 0 0; opacity: 0.9; font-size: 0.75rem;">Check your Vercel Environment Variables: DATABASE_URL or POSTGRES_URL</p>
+    </div>
+    {% endif %}
+
     <div class="background-gradient"></div>
     
     <div class="container">

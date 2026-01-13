@@ -25,62 +25,74 @@ from simpledb.exceptions import SimpleDBException
 app = Flask(__name__)
 
 # Initialize database with Supabase
-db = SupabaseDatabase()
-executor = QueryExecutor(db)
+db = None
+executor = None
+db_error = None
 
-# Initialize database tables
 try:
-    # Force schema refresh if tasks table is old (missing category_id)
+    db = SupabaseDatabase()
+    executor = QueryExecutor(db)
+
+    # Initialize database tables
     try:
-        tasks_table = db.get_table('tasks')
-        if len(tasks_table.columns) < 6:
-            print("Upgrading 'tasks' table schema...")
-            db.drop_table('tasks')
-    except:
-        pass
+        # Force schema refresh if tasks table is old (missing category_id)
+        try:
+            tasks_table = db.get_table('tasks')
+            if len(tasks_table.columns) < 6:
+                print("Upgrading 'tasks' table schema...")
+                db.drop_table('tasks')
+        except:
+            pass
 
-    # Categories table with IF NOT EXISTS
-    executor.execute("""
-        CREATE TABLE IF NOT EXISTS categories (
-            id INT PRIMARY KEY,
-            name VARCHAR(50) UNIQUE NOT NULL
-        );
-    """)
-    
-    # Check if categories already seeded
-    cat_check = executor.execute("SELECT COUNT(*) as count FROM categories;")
-    if cat_check['success'] and cat_check['rows'][0]['count'] == 0:
-        executor.execute("INSERT INTO categories (id, name) VALUES (1, 'Work');")
-        executor.execute("INSERT INTO categories (id, name) VALUES (2, 'Personal');")
-        executor.execute("INSERT INTO categories (id, name) VALUES (3, 'Urgent');")
-except Exception as e:
-    print(f"Error initializing categories: {e}")
+        # Categories table with IF NOT EXISTS
+        executor.execute("""
+            CREATE TABLE IF NOT EXISTS categories (
+                id INT PRIMARY KEY,
+                name VARCHAR(50) UNIQUE NOT NULL
+            );
+        """)
+        
+        # Check if categories already seeded
+        cat_check = executor.execute("SELECT COUNT(*) as count FROM categories;")
+        if cat_check['success'] and cat_check['rows'][0]['count'] == 0:
+            executor.execute("INSERT INTO categories (id, name) VALUES (1, 'Work');")
+            executor.execute("INSERT INTO categories (id, name) VALUES (2, 'Personal');")
+            executor.execute("INSERT INTO categories (id, name) VALUES (3, 'Urgent');")
+    except Exception as e:
+        print(f"Error initializing categories/schema: {e}")
 
-try:
-    # Tasks table with IF NOT EXISTS
-    executor.execute("""
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INT PRIMARY KEY,
-            title VARCHAR(200) NOT NULL,
-            description VARCHAR(500),
-            status VARCHAR(20) NOT NULL,
-            created_at VARCHAR(50),
-            category_id INT
-        );
-    """)
+    try:
+        # Tasks table with IF NOT EXISTS
+        executor.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INT PRIMARY KEY,
+                title VARCHAR(200) NOT NULL,
+                description VARCHAR(500),
+                status VARCHAR(20) NOT NULL,
+                created_at VARCHAR(50),
+                category_id INT
+            );
+        """)
+    except Exception as e:
+        print(f"Error initializing tasks: {e}")
+
 except Exception as e:
-    print(f"Error initializing tasks: {e}")
+    print(f"CRITICAL: Database initialization failed: {e}")
+    db_error = str(e)
 
 
 @app.route('/')
 def index():
     """Render main application page."""
-    return render_template('index.html')
+    return render_template('index.html', db_error=db_error)
 
 
 @app.route('/api/tasks', methods=['GET'])
 def get_tasks():
     """Get all tasks."""
+    if not executor:
+        return jsonify({'success': False, 'error': f'Database not connected: {db_error}'}), 503
+        
     result = executor.execute("SELECT * FROM tasks ORDER BY id DESC;")
     
     if result['success']:
@@ -95,6 +107,9 @@ def get_tasks():
 @app.route('/api/tasks', methods=['POST'])
 def create_task():
     """Create a new task."""
+    if not executor:
+        return jsonify({'success': False, 'error': f'Database not connected: {db_error}'}), 503
+        
     data = request.json
     
     # Get next ID
@@ -138,6 +153,9 @@ def create_task():
 @app.route('/api/tasks/<int:task_id>', methods=['PUT'])
 def update_task(task_id):
     """Update a task."""
+    if not executor:
+        return jsonify({'success': False, 'error': f'Database not connected: {db_error}'}), 503
+        
     data = request.json
     
     updates = []
@@ -169,6 +187,9 @@ def update_task(task_id):
 @app.route('/api/tasks/<int:task_id>', methods=['DELETE'])
 def delete_task(task_id):
     """Delete a task."""
+    if not executor:
+        return jsonify({'success': False, 'error': f'Database not connected: {db_error}'}), 503
+        
     sql = f"DELETE FROM tasks WHERE id = {task_id};"
     
     result = executor.execute(sql)
@@ -185,6 +206,9 @@ def delete_task(task_id):
 @app.route('/api/query', methods=['POST'])
 def execute_query():
     """Execute a custom SQL query."""
+    if not executor:
+        return jsonify({'success': False, 'error': f'Database not connected: {db_error}'}), 503
+        
     data = request.json
     sql = data.get('sql', '')
     

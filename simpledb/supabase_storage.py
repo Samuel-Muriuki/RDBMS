@@ -317,10 +317,18 @@ class SupabaseDatabase:
     
     def __init__(self, database_url: Optional[str] = None):
         """Initialize database connection."""
-        self.database_url = database_url or os.getenv('DATABASE_URL')
+        # Try different environment variable names used by Vercel/Supabase
+        self.database_url = (
+            database_url or 
+            os.getenv('DATABASE_URL') or 
+            os.getenv('POSTGRES_URL') or 
+            os.getenv('POSTGRES_URL_NON_POOLING')
+        )
         
         if not self.database_url:
-            raise ValueError("DATABASE_URL environment variable not set")
+            print("Error: No database connection URL found in environment variables.")
+            print("Looked for: DATABASE_URL, POSTGRES_URL, POSTGRES_URL_NON_POOLING")
+            raise ValueError("Database connection URL not set")
         
         # Create connection
         self.connection = psycopg2.connect(self.database_url)
