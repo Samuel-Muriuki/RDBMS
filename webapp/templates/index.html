@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='icon.png') }}">
 </head>
 <body>
     <div class="background-gradient"></div>
@@ -15,10 +16,17 @@
     <div class="container">
         <header class="header">
             <div class="header-content">
-                <h1 class="title">
-                    <span class="title-icon">🗄️</span>
-                    SimpleDB Task Manager
-                </h1>
+                <div class="header-main">
+                    <h1 class="title">
+                        <img src="{{ url_for('static', filename='icon.png') }}" alt="SimpleDB Logo" class="header-logo">
+                        SimpleDB Task Manager
+                    </h1>
+                    <div class="theme-toggle">
+                        <button id="themeToggleBtn" class="btn-icon-small" title="Toggle Theme">
+                            <span id="themeIcon">🌓</span>
+                        </button>
+                    </div>
+                </div>
                 <p class="subtitle">Powered by a custom-built RDBMS</p>
             </div>
         </header>
@@ -35,6 +43,14 @@
                     <div class="form-group">
                         <label for="taskDescription">Description</label>
                         <textarea id="taskDescription" placeholder="Enter task description..." rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="taskCategory">Category</label>
+                        <select id="taskCategory">
+                            <option value="1">Work</option>
+                            <option value="2">Personal</option>
+                            <option value="3">Urgent</option>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label for="taskStatus">Status</label>
@@ -62,6 +78,29 @@
             <!-- SQL Console -->
             <section class="card console-card">
                 <h2 class="card-title">SQL Console</h2>
+                <div class="sample-queries">
+                    <label style="font-size: 0.9rem; color: #94a3b8; margin-bottom: 0.5rem; display: block;">Sample Queries:</label>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                        <button type="button" onclick="setSampleQuery('SELECT * FROM tasks;')" class="btn-sample">
+                            📋 View All Tasks
+                        </button>
+                        <button type="button" onclick="setSampleQuery('SELECT * FROM tasks WHERE status = \'pending\';')" class="btn-sample">
+                            ⏳ Pending Tasks
+                        </button>
+                        <button type="button" onclick="setSampleQuery('SELECT title, status FROM tasks ORDER BY id DESC;')" class="btn-sample">
+                            🔽 Recent Tasks
+                        </button>
+                        <button type="button" onclick="setSampleQuery('SELECT COUNT(*) as total FROM tasks;')" class="btn-sample">
+                            🔢 Count Tasks
+                        </button>
+                        <button type="button" onclick="setSampleQuery('DELETE FROM tasks WHERE status = \'completed\';')" class="btn-sample">
+                            🗑️ Delete Completed
+                        </button>
+                        <button type="button" onclick="setSampleQuery('SELECT tasks.title, categories.name as category FROM tasks JOIN categories ON tasks.category_id = categories.id;')" class="btn-sample">
+                            🔗 JOIN Tasks & Categories
+                        </button>
+                    </div>
+                </div>
                 <form id="sqlForm" class="sql-form">
                     <div class="form-group">
                         <label for="sqlQuery">Execute SQL Query</label>
@@ -74,16 +113,112 @@
                 </form>
                 <div id="sqlResult" class="sql-result"></div>
             </section>
+            <!-- RDBMS Learning Hub -->
+            <section class="card learning-card">
+                <h2 class="card-title">RDBMS Learning Hub</h2>
+                <div class="learning-content">
+                    <div class="learning-milestones">
+                        <button class="milestone-badge" id="m-start" onclick="showArticle('intro')" title="First step into RDBMS">🎓 Explorer</button>
+                        <button class="milestone-badge locked" id="m-crud" onclick="showArticle('crud')" title="Perform a CRUD operation">🛠️ Builder</button>
+                        <button class="milestone-badge locked" id="m-sql" onclick="showArticle('acid')" title="Learn about ACID properties">📜 Scribe</button>
+                        <button class="milestone-badge locked" id="m-join" onclick="showArticle('relational')" title="Join multiple tables">🔗 Weaver</button>
+                    </div>
+                    
+                    <div class="article-viewer">
+                        <div class="article-tabs">
+                            <button class="article-tab" id="tab-intro" onclick="showArticle('intro')">Intro</button>
+                            <button class="article-tab" id="tab-crud" onclick="showArticle('crud')">CRUD</button>
+                            <button class="article-tab" id="tab-acid" onclick="showArticle('acid')">ACID</button>
+                            <button class="article-tab" id="tab-relational" onclick="showArticle('relational')">Relational</button>
+                        </div>
+                        <div id="articleContent" class="article-body">
+                            <!-- Injected by JS -->
+                        </div>
+                    </div>
+                </div>
+            </section>
         </main>
+    </div>
+
+    <!-- Edit Task Modal -->
+    <div id="editTaskModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Edit Task</h2>
+                <button class="close-modal" onclick="closeEditModal()">&times;</button>
+            </div>
+            <form id="editTaskForm">
+                <input type="hidden" id="editTaskId">
+                <div class="form-group">
+                    <label for="editTaskTitle">Title</label>
+                    <input type="text" id="editTaskTitle" required>
+                </div>
+                <div class="form-group">
+                    <label for="editTaskDescription">Description</label>
+                    <textarea id="editTaskDescription" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="editTaskCategory">Category</label>
+                    <select id="editTaskCategory">
+                        <option value="1">Work</option>
+                        <option value="2">Personal</option>
+                        <option value="3">Urgent</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="editTaskStatus">Status</label>
+                    <select id="editTaskStatus">
+                        <option value="pending">Pending</option>
+                        <option value="in-progress">In Progress</option>
+                        <option value="completed">Completed</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn" style="background: rgba(148, 163, 184, 0.1); color: var(--text-primary);" onclick="closeEditModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <script>
         // API base URL
         const API_BASE = '/api';
 
+        // Theme Handling
+        const themeToggleBtn = document.getElementById('themeToggleBtn');
+        const themeIcon = document.getElementById('themeIcon');
+        
+        // Initialize theme
+        const savedTheme = localStorage.getItem('theme') || 'system';
+        applyTheme(savedTheme);
+
+        themeToggleBtn.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            applyTheme(newTheme);
+        });
+
+        function applyTheme(theme) {
+            if (theme === 'system') {
+                const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                document.documentElement.setAttribute('data-theme', systemDark ? 'dark' : 'light');
+                themeIcon.textContent = '🌓';
+            } else {
+                document.documentElement.setAttribute('data-theme', theme);
+                themeIcon.textContent = theme === 'dark' ? '🌙' : '☀️';
+            }
+            localStorage.setItem('theme', theme);
+        }
+
+        // Global state to track tasks change
+        let lastTasksJson = '';
+
         // Load tasks on page load
         document.addEventListener('DOMContentLoaded', () => {
-            loadTasks();
+            loadTasks(true); // Initial load with loader
+            // Start real-time sync (polling)
+            setInterval(loadTasks, 5000); // Sync every 5 seconds
         });
 
         // Task form submission
@@ -93,12 +228,13 @@
             const title = document.getElementById('taskTitle').value;
             const description = document.getElementById('taskDescription').value;
             const status = document.getElementById('taskStatus').value;
+            const category_id = document.getElementById('taskCategory').value;
 
             try {
                 const response = await fetch(`${API_BASE}/tasks`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title, description, status })
+                    body: JSON.stringify({ title, description, status, category_id })
                 });
 
                 const result = await response.json();
@@ -109,6 +245,7 @@
                     // Reload tasks
                     loadTasks();
                     showNotification('Task created successfully!', 'success');
+                    unlockMilestone('m-crud', 'Task Master: Your first CRUD operation!');
                 } else {
                     showNotification(result.error || 'Failed to create task', 'error');
                 }
@@ -137,6 +274,12 @@
                     if (result.rows) {
                         // SELECT query - show table
                         resultDiv.innerHTML = formatTable(result.columns, result.rows);
+                        unlockMilestone('m-sql', 'Scribe: Executed your first custom SQL query!');
+                        
+                        // Check for JOIN in query
+                        if (sql.toUpperCase().includes('JOIN')) {
+                            unlockMilestone('m-join', 'Weaver: Mastered relational connections with a JOIN!');
+                        }
                     } else {
                         // Other query - show message
                         resultDiv.innerHTML = `<div class="success-message">${result.message}</div>`;
@@ -151,20 +294,48 @@
         });
 
         // Load tasks from API
-        async function loadTasks() {
+        async function loadTasks(force = false) {
             const tasksList = document.getElementById('tasksList');
             
             try {
                 const response = await fetch(`${API_BASE}/tasks`);
                 const result = await response.json();
 
-                if (result.success && result.tasks.length > 0) {
-                    tasksList.innerHTML = result.tasks.map(task => createTaskCard(task)).join('');
+                if (result.success) {
+                    const currentJson = JSON.stringify(result.tasks);
+                    
+                    // Only update DOM if data has changed
+                    if (currentJson === lastTasksJson && !force) {
+                        return;
+                    }
+                    
+                    lastTasksJson = currentJson;
+                    
+                    if (result.tasks.length > 0) {
+                        // Surgical update would be better, but for this scale, 
+                        // just avoiding the flinch on identical data is key.
+                        // We use a temporary container to avoid layout thrashing.
+                        const fragment = document.createDocumentFragment();
+                        result.tasks.forEach(task => {
+                            const div = document.createElement('div');
+                            div.innerHTML = createTaskCard(task);
+                            fragment.appendChild(div.firstElementChild);
+                        });
+                        
+                        tasksList.innerHTML = '';
+                        tasksList.appendChild(fragment);
+                    } else {
+                        tasksList.innerHTML = '<div class="empty-state">No tasks yet. Create one now!</div>';
+                    }
                 } else {
-                    tasksList.innerHTML = '<div class="empty-state">No tasks yet. Create one above!</div>';
+                    tasksList.innerHTML = `<div class="error-message">${result.error || 'Failed to load tasks'}</div>`;
                 }
             } catch (error) {
-                tasksList.innerHTML = '<div class="error-message">Failed to load tasks</div>';
+                console.error('Refetch error:', error);
+                // Don't show error message if we already have tasks showing
+                if (tasksList.children.length === 0 || tasksList.querySelector('.loading')) {
+                    tasksList.innerHTML = '<div class="error-message">Failed to load tasks</div>';
+                }
             }
         }
 
@@ -177,10 +348,17 @@
                 'completed': '✅'
             }[task.status] || '📝';
 
+            // Category badge mapping
+            const catMap = {1: '💼 Work', 2: '👤 Personal', 3: '🚨 Urgent'};
+            const catName = catMap[task.category_id] || '📁 General';
+
             return `
                 <div class="task-item" data-id="${task.id}">
                     <div class="task-header">
-                        <h3 class="task-title">${escapeHtml(task.title)}</h3>
+                        <div class="title-group">
+                            <h3 class="task-title">${escapeHtml(task.title)}</h3>
+                            <span class="task-category-label">${catName}</span>
+                        </div>
                         <span class="task-status status-${statusClass}">
                             ${statusEmoji} ${task.status}
                         </span>
@@ -189,8 +367,8 @@
                     <div class="task-footer">
                         <span class="task-date">Created: ${task.created_at}</span>
                         <div class="task-actions">
-                            <button onclick="updateTaskStatus(${task.id}, '${task.status}')" class="btn-icon-small" title="Change status">
-                                🔄
+                            <button onclick='openEditModal(${JSON.stringify(task).replace(/'/g, "&apos;")})' class="btn-icon-small" title="Edit Task">
+                                ✏️
                             </button>
                             <button onclick="deleteTask(${task.id})" class="btn-icon-small" title="Delete">
                                 🗑️
@@ -201,31 +379,56 @@
             `;
         }
 
-        // Update task status
-        async function updateTaskStatus(id, currentStatus) {
-            const statuses = ['pending', 'in-progress', 'completed'];
-            const currentIndex = statuses.indexOf(currentStatus);
-            const newStatus = statuses[(currentIndex + 1) % statuses.length];
+        // Modal triggers
+        function openEditModal(task) {
+            document.getElementById('editTaskId').value = task.id;
+            document.getElementById('editTaskTitle').value = task.title;
+            document.getElementById('editTaskDescription').value = task.description || '';
+            document.getElementById('editTaskCategory').value = task.category_id;
+            document.getElementById('editTaskStatus').value = task.status;
+            
+            const modal = document.getElementById('editTaskModal');
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('show'), 10);
+        }
+
+        function closeEditModal() {
+            const modal = document.getElementById('editTaskModal');
+            modal.classList.remove('show');
+            setTimeout(() => modal.style.display = 'none', 300);
+        }
+
+        // Edit form submission
+        document.getElementById('editTaskForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('editTaskId').value;
+            const payload = {
+                title: document.getElementById('editTaskTitle').value,
+                description: document.getElementById('editTaskDescription').value,
+                category_id: document.getElementById('editTaskCategory').value,
+                status: document.getElementById('editTaskStatus').value
+            };
 
             try {
                 const response = await fetch(`${API_BASE}/tasks/${id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: newStatus })
+                    body: JSON.stringify(payload)
                 });
 
                 const result = await response.json();
-
                 if (result.success) {
-                    loadTasks();
-                    showNotification('Task updated!', 'success');
+                    closeEditModal();
+                    loadTasks(true);
+                    showNotification('Task updated successfully!', 'success');
                 } else {
-                    showNotification(result.error || 'Failed to update task', 'error');
+                    showNotification(result.error || 'Update failed', 'error');
                 }
             } catch (error) {
                 showNotification('Network error', 'error');
             }
-        }
+        });
+
 
         // Delete task
         async function deleteTask(id) {
@@ -300,11 +503,143 @@
             }, 3000);
         }
 
+        // Learning Hub Content
+        const articles = {
+            'intro': `
+                <h3>What is an RDBMS?</h3>
+                <p>A Relational Database Management System (RDBMS) is software that manages databases where data is organized into tables linked by relationships.</p>
+                <p>Key building blocks:</p>
+                <ul>
+                    <li><strong>Table:</strong> Where data lives (Rows and Columns)</li>
+                    <li><strong>Primary Key:</strong> Unique ID for each row</li>
+                    <li><strong>Foreign Key:</strong> Links one table to another</li>
+                </ul>
+            `,
+            'crud': `
+                <h3>CRUD Operations</h3>
+                <p>CRUD stands for Create, Read, Update, and Delete—the four basic functions of persistent storage.</p>
+                <ul>
+                    <li><strong>Create:</strong> INSERT INTO table ...</li>
+                    <li><strong>Read:</strong> SELECT * FROM table ...</li>
+                    <li><strong>Update:</strong> UPDATE table SET ...</li>
+                    <li><strong>Delete:</strong> DELETE FROM table ...</li>
+                </ul>
+                <p>In SimpleDB, you can perform these via the form or the SQL console!</p>
+            `,
+            'acid': `
+                <h3>ACID Properties</h3>
+                <p>Reliability in RDBMS is guaranteed by ACID:</p>
+                <ul>
+                    <li><strong>Atomicity:</strong> All or nothing transactions</li>
+                    <li><strong>Consistency:</strong> Valid rules only</li>
+                    <li><strong>Isolation:</strong> Concurrent transactions don't clash</li>
+                    <li><strong>Durability:</strong> Data persists after crashes</li>
+                </ul>
+            `,
+            'relational': `
+                <h3>The Relational Model & JOINs</h3>
+                <p>The core power of an RDBMS is joining data. Instead of duplicating info, we link tables using common values.</p>
+                <p><strong>Example:</strong> Connecting a Task to its Category via <code>category_id</code>.</p>
+                <p>Try the "JOIN Tasks & Categories" sample query to see it in action!</p>
+            `
+        };
+
+        function showArticle(id) {
+            const milestoneMap = {
+                'intro': 'm-start',
+                'crud': 'm-crud',
+                'acid': 'm-sql',
+                'relational': 'm-join'
+            };
+            
+            const badgeId = milestoneMap[id];
+            const badge = document.getElementById(badgeId);
+            
+            // Prevent switching if the milestone is locked (except for intro)
+            if (id !== 'intro' && badge && badge.classList.contains('locked')) {
+                showNotification('🔒 This milestone is locked! Perform the required action to unlock it.', 'info');
+                return;
+            }
+
+            if (!articles[id]) return;
+            document.getElementById('articleContent').innerHTML = articles[id];
+            
+            // Update Milestone badges
+            document.querySelectorAll('.milestone-badge').forEach(b => {
+                b.classList.remove('active');
+                if (b.id === badgeId) b.classList.add('active');
+            });
+            
+            // Update Inner tabs
+            document.querySelectorAll('.article-tab').forEach(tab => {
+                const tabId = tab.getAttribute('onclick').match(/'([^']+)'/)[1];
+                if (tabId === id) {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+        }
+
+        // Initialize first article and sync locks
+        document.addEventListener('DOMContentLoaded', () => {
+            syncTabLocks();
+            showArticle('intro');
+        });
+
+        // Sync tab locked states from milestones
+        function syncTabLocks() {
+            const map = {
+                'tab-intro': 'm-start',
+                'tab-crud': 'm-crud',
+                'tab-acid': 'm-sql',
+                'tab-relational': 'm-join'
+            };
+            Object.entries(map).forEach(([tabId, badgeId]) => {
+                const badge = document.getElementById(badgeId);
+                const tab = document.getElementById(tabId);
+                if (badge && tab) {
+                    if (badge.classList.contains('locked')) {
+                        tab.classList.add('locked');
+                    } else {
+                        tab.classList.remove('locked');
+                    }
+                }
+            });
+        }
+
+        // Updated unlock to sync tabs
+        function unlockMilestone(id, message) {
+            const el = document.getElementById(id);
+            if (el && el.classList.contains('locked')) {
+                el.classList.remove('locked');
+                el.classList.add('unlocked');
+                showNotification(`🏆 Milestone Unlocked: ${message}`, 'success');
+                
+                syncTabLocks();
+
+                // Automatically show the new content
+                const reverseMap = {
+                    'm-start': 'intro',
+                    'm-crud': 'crud',
+                    'm-sql': 'acid',
+                    'm-join': 'relational'
+                };
+                showArticle(reverseMap[id]);
+            }
+        }
+
         // Escape HTML
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        // Set sample query
+        function setSampleQuery(query) {
+            document.getElementById('sqlQuery').value = query;
+            document.getElementById('sqlQuery').focus();
         }
     </script>
 </body>

@@ -105,6 +105,14 @@ INSERT INTO students VALUES (5, 'Eve Adams', 'alice@university.edu', 20);
 
 "Notice it fails - the email must be unique! This shows our constraint enforcement is working."
 
+### Relational Features & Aggregates
+```sql
+SELECT students.name, grades.grade FROM students INNER JOIN grades ON students.id = grades.student_id;
+SELECT COUNT(*) FROM students;
+```
+
+"As you can see, SimpleDB supports multi-table joins and aggregate functions, just like a production RDBMS."
+
 ### Delete Data
 ```sql
 DELETE FROM students WHERE age < 20;

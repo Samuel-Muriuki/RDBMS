@@ -172,8 +172,57 @@ class SupabaseTable:
                         raise UniqueConstraintViolation(f"Unique constraint violation: {e}")
                 raise
     
-    def update_row(self, conditions: List[Dict[str, Any]], updates: Dict[str, Any]):
-        """Update rows matching conditions."""
+    @property
+    def rows(self) -> List[Dict[str, Any]]:
+        """Fetch all rows for compatibility with QueryExecutor."""
+        # For compatibility with QueryExecutor which expects table.rows[i]
+        # We fetch all rows and return them as a list.
+        # This is not efficient for large tables but necessary for compatibility.
+        sql = f'SELECT * FROM "{self.name}"'
+        if self.primary_key:
+            sql += f' ORDER BY "{self.primary_key}" ASC'
+        
+        with self.connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(sql)
+            return [dict(row) for row in cursor.fetchall()]
+
+    def find_rows(self, conditions: Optional[List[Dict[str, Any]]] = None) -> List[int]:
+        """Find rows matching conditions. Returns list of row indexes."""
+        # QueryExecutor expects list of integers (indexes)
+        # We fetch matching rows and return their range
+        sql = f'SELECT * FROM "{self.name}"'
+        values = []
+        
+        if conditions:
+            where_clause, values = self._build_where_clause(conditions)
+            if where_clause:
+                sql += f' WHERE {where_clause}'
+        
+        if self.primary_key:
+            sql += f' ORDER BY "{self.primary_key}" ASC'
+        
+        with self.connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(sql, values)
+            count = len(cursor.fetchall())
+            return list(range(count))
+
+    def update_row(self, row_index: int, updates: Dict[str, Any]):
+        """Update a row by its index in the current fetch (simplified for compatibility)."""
+        # This is tricky because indexes are not persistent in SQL.
+        # QueryExecutor calls find_rows, gets indexes, then calls update_row(index, updates).
+        # We need to fetch the row at that index to get its PK, then update it.
+        rows = self.rows
+        if row_index < 0 or row_index >= len(rows):
+            return
+        
+        row = rows[row_index]
+        if not self.primary_key:
+            raise SimpleDBException("Update by index requires a primary key in Supabase storage")
+        
+        pk_val = row[self.primary_key]
+        conditions = [{'column': self.primary_key, 'operator': '=', 'value': pk_val}]
+        
+        # Original update_row logic
         # Validate updates
         for col_name, value in updates.items():
             col = self.get_column(col_name)
@@ -185,49 +234,37 @@ class SupabaseTable:
         set_clauses = [f'"{col}" = %s' for col in updates.keys()]
         where_clause, where_values = self._build_where_clause(conditions)
         
-        sql = f'UPDATE "{self.name}" SET {", ".join(set_clauses)}'
-        if where_clause:
-            sql += f' WHERE {where_clause}'
-        
+        sql = f'UPDATE "{self.name}" SET {", ".join(set_clauses)} WHERE {where_clause}'
         values = list(updates.values()) + where_values
         
         with self.connection.cursor() as cursor:
             try:
                 cursor.execute(sql, values)
                 self.connection.commit()
-                return cursor.rowcount
             except psycopg2.IntegrityError as e:
                 self.connection.rollback()
                 if 'duplicate key' in str(e).lower():
                     raise UniqueConstraintViolation(f"Unique constraint violation: {e}")
                 raise
-    
-    def delete_row(self, conditions: List[Dict[str, Any]]):
-        """Delete rows matching conditions."""
-        where_clause, where_values = self._build_where_clause(conditions)
+
+    def delete_row(self, row_index: int):
+        """Delete a row by its index in the current fetch."""
+        rows = self.rows
+        if row_index < 0 or row_index >= len(rows):
+            return
         
-        sql = f'DELETE FROM "{self.name}"'
-        if where_clause:
-            sql += f' WHERE {where_clause}'
+        row = rows[row_index]
+        if not self.primary_key:
+            raise SimpleDBException("Delete by index requires a primary key in Supabase storage")
+        
+        pk_val = row[self.primary_key]
+        
+        sql = f'DELETE FROM "{self.name}" WHERE "{self.primary_key}" = %s'
         
         with self.connection.cursor() as cursor:
-            cursor.execute(sql, where_values)
+            cursor.execute(sql, (pk_val,))
             self.connection.commit()
-            return cursor.rowcount
-    
-    def find_rows(self, conditions: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
-        """Find rows matching conditions."""
-        sql = f'SELECT * FROM "{self.name}"'
-        values = []
-        
-        if conditions:
-            where_clause, values = self._build_where_clause(conditions)
-            if where_clause:
-                sql += f' WHERE {where_clause}'
-        
-        with self.connection.cursor(cursor_factory=RealDictCursor) as cursor:
-            cursor.execute(sql, values)
-            return [dict(row) for row in cursor.fetchall()]
+
     
     def _build_where_clause(self, conditions: List[Dict[str, Any]]) -> tuple:
         """Build WHERE clause from conditions."""

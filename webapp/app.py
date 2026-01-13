@@ -10,7 +10,10 @@ from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv('.env.local')
+if os.path.exists('.env.local'):
+    load_dotenv('.env.local')
+else:
+    load_dotenv() # Fallback to standard environment variables (Vercel)
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -25,19 +28,48 @@ app = Flask(__name__)
 db = SupabaseDatabase()
 executor = QueryExecutor(db)
 
-# Initialize tasks table if it doesn't exist
+# Initialize database tables
 try:
-    db.get_table('tasks')
-except:
+    # Force schema refresh if tasks table is old (missing category_id)
+    try:
+        tasks_table = db.get_table('tasks')
+        if len(tasks_table.columns) < 6:
+            print("Upgrading 'tasks' table schema...")
+            db.drop_table('tasks')
+    except:
+        pass
+
+    # Categories table with IF NOT EXISTS
     executor.execute("""
-        CREATE TABLE tasks (
+        CREATE TABLE IF NOT EXISTS categories (
+            id INT PRIMARY KEY,
+            name VARCHAR(50) UNIQUE NOT NULL
+        );
+    """)
+    
+    # Check if categories already seeded
+    cat_check = executor.execute("SELECT COUNT(*) as count FROM categories;")
+    if cat_check['success'] and cat_check['rows'][0]['count'] == 0:
+        executor.execute("INSERT INTO categories (id, name) VALUES (1, 'Work');")
+        executor.execute("INSERT INTO categories (id, name) VALUES (2, 'Personal');")
+        executor.execute("INSERT INTO categories (id, name) VALUES (3, 'Urgent');")
+except Exception as e:
+    print(f"Error initializing categories: {e}")
+
+try:
+    # Tasks table with IF NOT EXISTS
+    executor.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
             id INT PRIMARY KEY,
             title VARCHAR(200) NOT NULL,
             description VARCHAR(500),
             status VARCHAR(20) NOT NULL,
-            created_at VARCHAR(50)
+            created_at VARCHAR(50),
+            category_id INT
         );
     """)
+except Exception as e:
+    print(f"Error initializing tasks: {e}")
 
 
 @app.route('/')
@@ -66,13 +98,16 @@ def create_task():
     data = request.json
     
     # Get next ID
-    result = executor.execute("SELECT * FROM tasks;")
-    next_id = len(result['rows']) + 1 if result['success'] else 1
+    result = executor.execute("SELECT id FROM tasks ORDER BY id DESC LIMIT 1;")
+    next_id = 1
+    if result['success'] and result['rows']:
+        next_id = result['rows'][0]['id'] + 1
     
     # Insert task
     title = data.get('title', '').replace("'", "''")
     description = data.get('description', '').replace("'", "''")
     status = data.get('status', 'pending')
+    category_id = data.get('category_id', 1) # Default to 1 (Work)
     
     from datetime import datetime
     created_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -83,7 +118,8 @@ def create_task():
             '{title}',
             '{description}',
             '{status}',
-            '{created_at}'
+            '{created_at}',
+            {category_id}
         );
     """
     

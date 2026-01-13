@@ -28,7 +28,7 @@ class Tokenizer:
         'SELECT', 'FROM', 'WHERE', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET',
         'DELETE', 'CREATE', 'TABLE', 'DROP', 'PRIMARY', 'KEY', 'UNIQUE', 'NOT',
         'NULL', 'INT', 'VARCHAR', 'BOOLEAN', 'ORDER', 'BY', 'LIMIT', 'ASC', 'DESC',
-        'AND', 'OR', 'INNER', 'JOIN', 'ON', 'TRUE', 'FALSE'
+        'AND', 'OR', 'INNER', 'JOIN', 'ON', 'TRUE', 'FALSE', 'IF', 'EXISTS', 'AS'
     }
     
     # Operators
@@ -91,7 +91,7 @@ class Tokenizer:
             # Handle identifiers and keywords
             if sql[i].isalpha() or sql[i] == '_':
                 start = i
-                while i < len(sql) and (sql[i].isalnum() or sql[i] == '_'):
+                while i < len(sql) and (sql[i].isalnum() or sql[i] in ('_', '.')):
                     i += 1
                 word = sql[start:i]
                 word_upper = word.upper()
@@ -183,6 +183,13 @@ class Parser:
         self.expect('KEYWORD', 'CREATE')
         self.expect('KEYWORD', 'TABLE')
         
+        if_not_exists = False
+        if self.current() and self.current().value == 'IF':
+            self.advance()
+            self.expect('KEYWORD', 'NOT')
+            self.expect('KEYWORD', 'EXISTS')
+            if_not_exists = True
+            
         table_name = self.expect('IDENTIFIER').value
         
         self.expect('OPERATOR', '(')
@@ -235,7 +242,8 @@ class Parser:
         return {
             'command': 'CREATE',
             'table': table_name,
-            'columns': columns
+            'columns': columns,
+            'if_not_exists': if_not_exists
         }
     
     def parse_drop(self) -> Dict[str, Any]:
@@ -306,16 +314,44 @@ class Parser:
         # Parse columns
         columns = []
         while True:
+            # Check if we've reached FROM
+            if self.current() and self.current().type == 'KEYWORD' and self.current().value == 'FROM':
+                break
+                
             if self.current() and self.current().value == '*':
                 self.advance()
                 columns.append('*')
-                break
+            elif self.current() and self.current().type == 'IDENTIFIER' and self.current().value.upper() == 'COUNT':
+                self.advance() # COUNT
+                self.expect('OPERATOR', '(')
+                self.expect('OPERATOR', '*')
+                self.expect('OPERATOR', ')')
+                # Handle AS alias
+                alias = 'count'
+                if self.current() and self.current().type == 'KEYWORD' and self.current().value == 'AS':
+                    self.advance()
+                    alias = self.expect('IDENTIFIER').value
+                columns.append(f'COUNT(*) AS {alias}')
+            elif self.current() and self.current().type == 'IDENTIFIER':
+                col_name = self.advance().value
+                # Handle AS alias
+                if self.current() and self.current().type == 'KEYWORD' and self.current().value == 'AS':
+                    self.advance()
+                    alias = self.expect('IDENTIFIER').value
+                    columns.append(f"{col_name} AS {alias}")
+                else:
+                    columns.append(col_name)
             else:
-                columns.append(self.expect('IDENTIFIER').value)
+                current_val = self.current().value if self.current() else 'EOF'
+                raise ParseError(f"Expected column or FROM, got {current_val}")
             
             if self.current() and self.current().value == ',':
                 self.advance()
+            elif self.current() and self.current().type == 'KEYWORD' and self.current().value == 'FROM':
+                break
             else:
+                # If next isn't a comma or FROM, we might have an issue, 
+                # but often it's just the end of the col list before FROM
                 break
         
         self.expect('KEYWORD', 'FROM')
@@ -328,9 +364,13 @@ class Parser:
         }
         
         # Parse optional JOIN
-        if self.current() and self.current().value == 'INNER':
-            self.advance()
-            self.expect('KEYWORD', 'JOIN')
+        if self.current() and self.current().type == 'KEYWORD' and self.current().value in ('INNER', 'JOIN'):
+            if self.current().value == 'INNER':
+                self.advance()
+                self.expect('KEYWORD', 'JOIN')
+            else:
+                self.advance() # JOIN
+                
             join_table = self.expect('IDENTIFIER').value
             self.expect('KEYWORD', 'ON')
             

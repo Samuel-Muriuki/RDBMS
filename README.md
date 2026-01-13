@@ -16,7 +16,9 @@ A fully functional relational database management system (RDBMS) built from scra
 - **Indexing**: Hash-based O(1) lookups for primary keys and unique columns
 - **Constraints**: PRIMARY KEY, UNIQUE, NOT NULL enforcement
 - **CRUD Operations**: Full Create, Read, Update, Delete support
-- **Query Features**: WHERE clauses, ORDER BY, LIMIT
+- **Relational Features**: `INNER JOIN` support for linking tables
+- **Aggregates**: `COUNT(*)` support for data summary
+- **Query Features**: WHERE clauses, ORDER BY, LIMIT, aliases (AS)
 
 ### Data Types
 - `INT` - Integer numbers
@@ -33,8 +35,9 @@ SELECT * FROM table_name;
 SELECT col1, col2 FROM table_name WHERE condition;
 UPDATE table_name SET col = value WHERE condition;
 DELETE FROM table_name WHERE condition;
-SELECT * FROM table_name ORDER BY column ASC|DESC;
-SELECT * FROM table_name LIMIT n;
+SELECT col1, col2 FROM table1 INNER JOIN table2 ON table1.id = table2.fk_id;
+SELECT COUNT(*) FROM table_name;
+SELECT col AS alias FROM table_name;
 ```
 
 ### Interactive REPL
@@ -129,6 +132,38 @@ The web app features:
 - Real-time CRUD operations
 - Interactive SQL console
 - Beautiful, responsive UI
+
+### Supabase Configuration
+
+The application uses Supabase PostgreSQL for persistent storage. To configure it:
+
+1. **Copy the environment template**:
+   ```bash
+   cp .env.example .env.local
+   ```
+
+2. **Fill in your credentials in `.env.local`**:
+   ```bash
+   # Supabase Configuration
+   # Copy this file to .env.local and fill in your actual values
+
+   # Supabase URL
+   SUPABASE_URL=your_supabase_url_here
+
+   # Supabase Keys
+   SUPABASE_ANON_KEY=your_anon_key_here
+   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+
+   # PostgreSQL Connection
+   POSTGRES_HOST=your_postgres_host_here
+   POSTGRES_DATABASE=postgres
+   POSTGRES_USER=your_postgres_user_here
+   POSTGRES_PASSWORD=your_postgres_password_here
+   POSTGRES_PORT=5432
+
+   # Direct PostgreSQL URL (non-pooling for better compatibility)
+   DATABASE_URL=your_database_url_here
+   ```
 
 ## 🌐 Deployment to Vercel
 
@@ -273,8 +308,7 @@ RDBMS/
 ## 🚧 Future Enhancements
 
 Potential improvements (not required for challenge):
-- [ ] INNER JOIN support (parser ready, executor needs implementation)
-- [ ] Aggregate functions (COUNT, SUM, AVG, MIN, MAX)
+- [ ] More aggregate functions (SUM, AVG, MIN, MAX)
 - [ ] GROUP BY and HAVING clauses
 - [ ] More data types (FLOAT, DATE, TIMESTAMP)
 - [ ] Transaction support (BEGIN, COMMIT, ROLLBACK)

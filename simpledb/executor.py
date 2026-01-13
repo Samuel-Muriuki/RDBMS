@@ -50,6 +50,13 @@ class QueryExecutor:
         """Execute CREATE TABLE command."""
         table_name = command['table']
         columns = command['columns']
+        if_not_exists = command.get('if_not_exists', False)
+        
+        if if_not_exists and table_name in self.db.list_tables():
+            return {
+                'success': True,
+                'message': f"Table '{table_name}' already exists (skipped)"
+            }
         
         self.db.create_table(table_name, columns)
         self.db.save()
@@ -113,8 +120,9 @@ class QueryExecutor:
         conditions = where['conditions'] if where else None
         row_indexes = table.find_rows(conditions)
         
-        # Get rows
-        rows = [table.rows[i] for i in row_indexes]
+        # Get rows - fetch once for efficiency
+        all_rows = table.rows
+        rows = [all_rows[i] for i in row_indexes]
         
         # Apply ORDER BY
         if order_by:
@@ -126,13 +134,77 @@ class QueryExecutor:
         if limit:
             rows = rows[:limit]
         
+        # Handle JOIN
+        join = command.get('join')
+        if join:
+            join_table_name = join['table']
+            join_table = self.db.get_table(join_table_name)
+            join_on = join['on']
+            
+            left_col = join_on['left'].split('.')[-1]
+            right_col = join_on['right'].split('.')[-1]
+            
+            joined_rows = []
+            join_table_rows = join_table.rows
+            
+            for row in rows:
+                match_val = row.get(left_col)
+                if match_val is not None:
+                    for j_row in join_table_rows:
+                        if j_row.get(right_col) == match_val:
+                            # Merge rows
+                            merged = row.copy()
+                            for k, v in j_row.items():
+                                # Add columns from join table
+                                if k not in merged:
+                                    merged[k] = v
+                                else:
+                                    # Handle title/id collisions
+                                    merged[f"{join_table_name}.{k}"] = v
+                            joined_rows.append(merged)
+            rows = joined_rows
+
         # Select columns
-        if columns == ['*']:
+        is_count_query = any('COUNT(*)' in str(col) for col in columns)
+        
+        if is_count_query:
+            count_col = columns[0]
+            alias = count_col.split('AS ')[-1] if 'AS ' in count_col else 'count'
+            result_columns = [alias]
+            result_rows = [{alias: len(rows)}]
+        elif columns == ['*']:
             result_columns = [col['name'] for col in table.columns]
+            if join:
+                # Add columns from join table
+                for col in join_table.columns:
+                    if col['name'] not in result_columns:
+                        result_columns.append(col['name'])
             result_rows = rows
         else:
-            result_columns = columns
-            result_rows = [{col: row.get(col) for col in columns} for row in rows]
+            result_columns = []
+            final_rows = []
+            
+            # Extract actual column names and aliases
+            col_mappings = []
+            for col in columns:
+                if ' AS ' in col:
+                    parts = col.split(' AS ')
+                    source_col = parts[0].split('.')[-1]
+                    alias = parts[1]
+                    col_mappings.append((source_col, alias))
+                    result_columns.append(alias)
+                else:
+                    source_col = col.split('.')[-1]
+                    col_mappings.append((source_col, source_col))
+                    result_columns.append(source_col)
+            
+            for row in rows:
+                new_row = {}
+                for source, alias in col_mappings:
+                    new_row[alias] = row.get(source)
+                final_rows.append(new_row)
+            
+            result_rows = final_rows
         
         return {
             'success': True,
