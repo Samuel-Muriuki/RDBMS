@@ -18,67 +18,79 @@ else:
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from simpledb.supabase_storage import SupabaseDatabase
-from simpledb.executor import QueryExecutor
-from simpledb.exceptions import SimpleDBException
-
+# Initialize Flask
 app = Flask(__name__)
 
-# Initialize database with Supabase
+# Initialize placeholders
 db = None
 executor = None
 db_error = None
+db_initialized = False
 
-try:
-    db = SupabaseDatabase()
-    executor = QueryExecutor(db)
-
-    # Initialize database tables
+def init_db():
+    global db, executor, db_error, db_initialized
+    if db_initialized:
+        return
+    
     try:
-        # Force schema refresh if tasks table is old (missing category_id)
-        try:
-            tasks_table = db.get_table('tasks')
-            if len(tasks_table.columns) < 6:
-                print("Upgrading 'tasks' table schema...")
-                db.drop_table('tasks')
-        except:
-            pass
-
-        # Categories table with IF NOT EXISTS
-        executor.execute("""
-            CREATE TABLE IF NOT EXISTS categories (
-                id INT PRIMARY KEY,
-                name VARCHAR(50) UNIQUE NOT NULL
-            );
-        """)
+        from simpledb.supabase_storage import SupabaseDatabase
+        from simpledb.executor import QueryExecutor
         
-        # Check if categories already seeded
-        cat_check = executor.execute("SELECT COUNT(*) as count FROM categories;")
-        if cat_check['success'] and cat_check['rows'][0]['count'] == 0:
-            executor.execute("INSERT INTO categories (id, name) VALUES (1, 'Work');")
-            executor.execute("INSERT INTO categories (id, name) VALUES (2, 'Personal');")
-            executor.execute("INSERT INTO categories (id, name) VALUES (3, 'Urgent');")
-    except Exception as e:
-        print(f"Error initializing categories/schema: {e}")
+        db = SupabaseDatabase()
+        executor = QueryExecutor(db)
 
-    try:
-        # Tasks table with IF NOT EXISTS
-        executor.execute("""
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INT PRIMARY KEY,
-                title VARCHAR(200) NOT NULL,
-                description VARCHAR(500),
-                status VARCHAR(20) NOT NULL,
-                created_at VARCHAR(50),
-                category_id INT
-            );
-        """)
-    except Exception as e:
-        print(f"Error initializing tasks: {e}")
+        # Initialize database tables
+        try:
+            # Force schema refresh if tasks table is old (missing category_id)
+            try:
+                tasks_table = db.get_table('tasks')
+                if len(tasks_table.columns) < 6:
+                    print("Upgrading 'tasks' table schema...")
+                    db.drop_table('tasks')
+            except:
+                pass
 
-except Exception as e:
-    print(f"CRITICAL: Database initialization failed: {e}")
-    db_error = str(e)
+            # Categories table with IF NOT EXISTS
+            executor.execute("""
+                CREATE TABLE IF NOT EXISTS categories (
+                    id INT PRIMARY KEY,
+                    name VARCHAR(50) UNIQUE NOT NULL
+                );
+            """)
+            
+            # Check if categories already seeded
+            cat_check = executor.execute("SELECT COUNT(*) as count FROM categories;")
+            if cat_check['success'] and cat_check['rows'][0]['count'] == 0:
+                executor.execute("INSERT INTO categories (id, name) VALUES (1, 'Work');")
+                executor.execute("INSERT INTO categories (id, name) VALUES (2, 'Personal');")
+                executor.execute("INSERT INTO categories (id, name) VALUES (3, 'Urgent');")
+        except Exception as e:
+            print(f"Error initializing categories/schema: {e}")
+
+        try:
+            # Tasks table with IF NOT EXISTS
+            executor.execute("""
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id INT PRIMARY KEY,
+                    title VARCHAR(200) NOT NULL,
+                    description VARCHAR(500),
+                    status VARCHAR(20) NOT NULL,
+                    created_at VARCHAR(50),
+                    category_id INT
+                );
+            """)
+        except Exception as e:
+            print(f"Error initializing tasks: {e}")
+
+        db_initialized = True
+    except Exception as e:
+        print(f"CRITICAL: Database initialization failed: {e}")
+        db_error = str(e)
+        db_initialized = True # Mark as "tried" even if failed
+
+@app.before_request
+def ensure_db():
+    init_db()
 
 
 @app.route('/')
